@@ -54,20 +54,22 @@ module.exports = async (req, res) => {
   }
 
   const { method, url } = req;
+  console.log('Babies API called:', { method, url });
+  console.log('Authorization header:', req.headers['authorization']);
 
   try {
     // Verify authentication for all baby operations
     const userId = verifyToken(req);
     console.log('Authenticated user:', userId);
 
-    if (method === 'GET' && url === '/api/babies') {
+    if (method === 'GET' && (url === '/api/babies' || url.startsWith('/api/babies?') || url.includes('babies'))) {
       // Get all babies for user
       const userBabies = babies.filter(baby => baby.user_id === userId);
       console.log('Found babies for user:', userBabies.length);
       
       res.json(userBabies);
 
-    } else if (method === 'POST' && url === '/api/babies') {
+    } else if (method === 'POST' && (url === '/api/babies' || url.includes('babies'))) {
       // Add new baby
       const { name, birthDate } = await parseBody(req);
       
@@ -150,7 +152,8 @@ module.exports = async (req, res) => {
       res.json({ message: 'Baby deleted successfully' });
 
     } else {
-      res.status(404).json({ error: 'Route not found' });
+      console.log('No route matched for:', { method, url });
+      res.status(404).json({ error: 'Route not found', debug: { method, url } });
     }
 
   } catch (authError) {
