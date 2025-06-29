@@ -18,7 +18,7 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchBabies();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchBabies = async () => {
     try {

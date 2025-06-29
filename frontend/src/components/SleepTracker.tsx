@@ -43,7 +43,7 @@ const SleepTracker: React.FC<SleepTrackerProps> = ({ baby }) => {
 
   useEffect(() => {
     fetchSleepRecords();
-  }, [baby.id]);
+  }, [baby.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchSleepRecords = async () => {
     try {
