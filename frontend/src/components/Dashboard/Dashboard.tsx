@@ -16,20 +16,30 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  console.log('Dashboard rendering, user:', user);
+  console.log('Loading state:', loading);
+  console.log('Error state:', error);
+
   useEffect(() => {
+    console.log('Dashboard useEffect triggered');
     fetchBabies();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchBabies = async () => {
+    console.log('fetchBabies called');
     try {
+      console.log('Making API call to /babies');
       const response = await api.get('/babies');
+      console.log('API response:', response.data);
       setBabies(response.data);
       if (response.data.length > 0 && !selectedBaby) {
         setSelectedBaby(response.data[0]);
       }
     } catch (err: any) {
+      console.error('Error fetching babies:', err);
       setError(err.response?.data?.error || 'Failed to fetch babies');
     } finally {
+      console.log('Setting loading to false');
       setLoading(false);
     }
   };
@@ -72,8 +82,11 @@ const Dashboard: React.FC = () => {
   };
 
   if (loading) {
-    return <div style={{ padding: '20px' }}>Loading...</div>;
+    console.log('Rendering loading state');
+    return <div style={{ padding: '20px', fontSize: '18px' }}>Loading dashboard...</div>;
   }
+
+  console.log('Rendering main dashboard content');
 
   const containerStyle = {
     padding: '20px',
@@ -139,7 +152,10 @@ const Dashboard: React.FC = () => {
       <div style={headerStyle}>
         <div>
           <h1>Baby Sleep Tracker</h1>
-          <p>Welcome, {user?.motherName}! ({user?.username})</p>
+          <p>Welcome, {user?.motherName || 'User'}! ({user?.username || 'Unknown'})</p>
+          <p style={{ fontSize: '12px', color: '#666' }}>
+            Debug: User object = {JSON.stringify(user)}
+          </p>
         </div>
         <button onClick={logout} style={dangerButtonStyle}>
           Logout
