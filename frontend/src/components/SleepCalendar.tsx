@@ -51,9 +51,9 @@ const SleepCalendar: React.FC<SleepCalendarProps> = ({ baby }) => {
 
   const getColorForDuration = (minutes: number) => {
     if (minutes === 0) return '#f8f9fa';
-    if (minutes < 300) return '#ffebee'; // < 5 hours - light red
-    if (minutes < 480) return '#fff3e0'; // < 8 hours - light orange
-    if (minutes < 600) return '#e8f5e8'; // < 10 hours - light green
+    if (minutes < 300) return '#ffebee'; // less than 5 hours - light red
+    if (minutes < 480) return '#fff3e0'; // less than 8 hours - light orange
+    if (minutes < 600) return '#e8f5e8'; // less than 10 hours - light green
     return '#c8e6c9'; // 10+ hours - green
   };
 
@@ -194,7 +194,7 @@ const SleepCalendar: React.FC<SleepCalendarProps> = ({ baby }) => {
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <div style={{ width: '20px', height: '20px', backgroundColor: '#ffebee', border: '1px solid #ddd' }}></div>
-            <span>< 5 hours</span>
+            <span>&lt; 5 hours</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
             <div style={{ width: '20px', height: '20px', backgroundColor: '#fff3e0', border: '1px solid #ddd' }}></div>

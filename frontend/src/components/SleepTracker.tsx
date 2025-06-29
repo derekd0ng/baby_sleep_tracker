@@ -85,7 +85,7 @@ const SleepTracker: React.FC<SleepTrackerProps> = ({ baby }) => {
   };
 
   const handleDeleteSleep = async (recordId: number) => {
-    if (!confirm('Are you sure you want to delete this sleep record?')) return;
+    if (!window.confirm('Are you sure you want to delete this sleep record?')) return;
 
     try {
       await api.delete(`/sleep/${recordId}`);

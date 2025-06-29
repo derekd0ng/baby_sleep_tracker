@@ -56,7 +56,7 @@ const Dashboard: React.FC = () => {
   };
 
   const handleDeleteBaby = async (babyId: number) => {
-    if (!confirm('Are you sure you want to delete this baby?')) return;
+    if (!window.confirm('Are you sure you want to delete this baby?')) return;
 
     try {
       await api.delete(`/babies/${babyId}`);
