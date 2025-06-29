@@ -1,17 +1,18 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const { Pool } = require('pg');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const app = express();
 
-// Database connection
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-});
+// In-memory storage (temporary - will be replaced with database)
+let users = [];
+let babies = [];
+let sleepRecords = [];
+let userIdCounter = 1;
+let babyIdCounter = 1;
+let sleepIdCounter = 1;
 
 // Middleware
 app.use(helmet());
@@ -33,7 +34,9 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ error: 'Access token required' });
   }
 
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+  const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-for-development';
+  
+  jwt.verify(token, jwtSecret, (err, decoded) => {
     if (err) {
       return res.status(403).json({ error: 'Invalid or expired token' });
     }
@@ -44,7 +47,14 @@ const authenticateToken = (req, res, next) => {
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    storage: 'in-memory',
+    users: users.length,
+    babies: babies.length,
+    sleepRecords: sleepRecords.length
+  });
 });
 
 // Auth routes
@@ -60,23 +70,32 @@ app.post('/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'Password must be at least 6 characters long' });
     }
 
-    const existingUser = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
-    if (existingUser.rows.length > 0) {
+    // Check if username already exists
+    const existingUser = users.find(user => user.username === username);
+    if (existingUser) {
       return res.status(400).json({ error: 'Username already exists' });
     }
 
+    // Hash password
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
-    const result = await pool.query(
-      'INSERT INTO users (username, password_hash, mother_name) VALUES ($1, $2, $3) RETURNING id, username, mother_name',
-      [username, passwordHash, motherName]
-    );
+    // Create new user
+    const newUser = {
+      id: userIdCounter++,
+      username,
+      password_hash: passwordHash,
+      mother_name: motherName,
+      created_at: new Date().toISOString()
+    };
 
-    const user = result.rows[0];
+    users.push(newUser);
+
+    // Generate JWT token
+    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-for-development';
     const token = jwt.sign(
-      { userId: user.id, username: user.username },
-      process.env.JWT_SECRET,
+      { userId: newUser.id, username: newUser.username },
+      jwtSecret,
       { expiresIn: '24h' }
     );
 
@@ -84,9 +103,9 @@ app.post('/auth/register', async (req, res) => {
       message: 'User registered successfully',
       token,
       user: {
-        id: user.id,
-        username: user.username,
-        motherName: user.mother_name
+        id: newUser.id,
+        username: newUser.username,
+        motherName: newUser.mother_name
       }
     });
   } catch (error) {
@@ -103,24 +122,23 @@ app.post('/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Username and password are required' });
     }
 
-    const result = await pool.query(
-      'SELECT id, username, password_hash, mother_name FROM users WHERE username = $1',
-      [username]
-    );
-
-    if (result.rows.length === 0) {
+    // Find user by username
+    const user = users.find(u => u.username === username);
+    if (!user) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
-    const user = result.rows[0];
+    // Check password
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
     if (!isValidPassword) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
 
+    // Generate JWT token
+    const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-for-development';
     const token = jwt.sign(
       { userId: user.id, username: user.username },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: '24h' }
     );
 
@@ -142,11 +160,8 @@ app.post('/auth/login', async (req, res) => {
 // Babies routes
 app.get('/babies', authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query(
-      'SELECT id, name, birth_date, created_at FROM babies WHERE user_id = $1 ORDER BY created_at ASC',
-      [req.userId]
-    );
-    res.json(result.rows);
+    const userBabies = babies.filter(baby => baby.user_id === req.userId);
+    res.json(userBabies);
   } catch (error) {
     console.error('Get babies error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -161,23 +176,26 @@ app.post('/babies', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Baby name is required' });
     }
 
-    const countResult = await pool.query(
-      'SELECT COUNT(*) as count FROM babies WHERE user_id = $1',
-      [req.userId]
-    );
-
-    if (parseInt(countResult.rows[0].count) >= 5) {
+    // Check if user already has 5 babies
+    const userBabies = babies.filter(baby => baby.user_id === req.userId);
+    if (userBabies.length >= 5) {
       return res.status(400).json({ error: 'Maximum of 5 babies allowed per user' });
     }
 
-    const result = await pool.query(
-      'INSERT INTO babies (user_id, name, birth_date) VALUES ($1, $2, $3) RETURNING id, name, birth_date, created_at',
-      [req.userId, name, birthDate || null]
-    );
+    // Create new baby
+    const newBaby = {
+      id: babyIdCounter++,
+      user_id: req.userId,
+      name,
+      birth_date: birthDate || null,
+      created_at: new Date().toISOString()
+    };
+
+    babies.push(newBaby);
 
     res.status(201).json({
       message: 'Baby added successfully',
-      baby: result.rows[0]
+      baby: newBaby
     });
   } catch (error) {
     console.error('Add baby error:', error);
@@ -194,23 +212,22 @@ app.put('/babies/:id', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Baby name is required' });
     }
 
-    const ownershipCheck = await pool.query(
-      'SELECT id FROM babies WHERE id = $1 AND user_id = $2',
-      [id, req.userId]
-    );
-
-    if (ownershipCheck.rows.length === 0) {
+    // Find baby and verify ownership
+    const babyIndex = babies.findIndex(baby => baby.id === parseInt(id) && baby.user_id === req.userId);
+    if (babyIndex === -1) {
       return res.status(404).json({ error: 'Baby not found' });
     }
 
-    const result = await pool.query(
-      'UPDATE babies SET name = $1, birth_date = $2 WHERE id = $3 AND user_id = $4 RETURNING id, name, birth_date, created_at',
-      [name, birthDate || null, id, req.userId]
-    );
+    // Update baby
+    babies[babyIndex] = {
+      ...babies[babyIndex],
+      name,
+      birth_date: birthDate || null
+    };
 
     res.json({
       message: 'Baby updated successfully',
-      baby: result.rows[0]
+      baby: babies[babyIndex]
     });
   } catch (error) {
     console.error('Update baby error:', error);
@@ -222,16 +239,16 @@ app.delete('/babies/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const ownershipCheck = await pool.query(
-      'SELECT id FROM babies WHERE id = $1 AND user_id = $2',
-      [id, req.userId]
-    );
-
-    if (ownershipCheck.rows.length === 0) {
+    // Find baby and verify ownership
+    const babyIndex = babies.findIndex(baby => baby.id === parseInt(id) && baby.user_id === req.userId);
+    if (babyIndex === -1) {
       return res.status(404).json({ error: 'Baby not found' });
     }
 
-    await pool.query('DELETE FROM babies WHERE id = $1 AND user_id = $2', [id, req.userId]);
+    // Delete baby and associated sleep records
+    babies.splice(babyIndex, 1);
+    sleepRecords = sleepRecords.filter(record => record.baby_id !== parseInt(id));
+
     res.json({ message: 'Baby deleted successfully' });
   } catch (error) {
     console.error('Delete baby error:', error);
@@ -244,24 +261,23 @@ app.get('/sleep/baby/:babyId', authenticateToken, async (req, res) => {
   try {
     const { babyId } = req.params;
 
-    const babyCheck = await pool.query(
-      'SELECT id FROM babies WHERE id = $1 AND user_id = $2',
-      [babyId, req.userId]
-    );
-
-    if (babyCheck.rows.length === 0) {
+    // Verify baby belongs to user
+    const baby = babies.find(b => b.id === parseInt(babyId) && b.user_id === req.userId);
+    if (!baby) {
       return res.status(404).json({ error: 'Baby not found' });
     }
 
-    const result = await pool.query(
-      `SELECT id, sleep_date, start_time, end_time, label, duration_minutes, notes, created_at 
-       FROM sleep_records 
-       WHERE baby_id = $1 
-       ORDER BY sleep_date DESC, start_time DESC`,
-      [babyId]
-    );
+    // Get sleep records for this baby
+    const babySleepRecords = sleepRecords
+      .filter(record => record.baby_id === parseInt(babyId))
+      .sort((a, b) => {
+        if (a.sleep_date !== b.sleep_date) {
+          return new Date(b.sleep_date) - new Date(a.sleep_date);
+        }
+        return b.start_time.localeCompare(a.start_time);
+      });
 
-    res.json(result.rows);
+    res.json(babySleepRecords);
   } catch (error) {
     console.error('Get sleep records error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -273,28 +289,39 @@ app.get('/sleep/baby/:babyId/daily-totals', authenticateToken, async (req, res) 
     const { babyId } = req.params;
     const { startDate, endDate } = req.query;
 
-    const babyCheck = await pool.query(
-      'SELECT id FROM babies WHERE id = $1 AND user_id = $2',
-      [babyId, req.userId]
-    );
-
-    if (babyCheck.rows.length === 0) {
+    // Verify baby belongs to user
+    const baby = babies.find(b => b.id === parseInt(babyId) && b.user_id === req.userId);
+    if (!baby) {
       return res.status(404).json({ error: 'Baby not found' });
     }
 
-    const result = await pool.query(
-      `SELECT 
-         sleep_date,
-         SUM(duration_minutes) as total_minutes,
-         COUNT(*) as sleep_count
-       FROM sleep_records 
-       WHERE baby_id = $1 AND sleep_date BETWEEN $2 AND $3
-       GROUP BY sleep_date
-       ORDER BY sleep_date ASC`,
-      [babyId, startDate, endDate]
+    // Filter sleep records by date range
+    const filteredRecords = sleepRecords.filter(record => 
+      record.baby_id === parseInt(babyId) &&
+      record.sleep_date >= startDate &&
+      record.sleep_date <= endDate
     );
 
-    res.json(result.rows);
+    // Group by date and calculate totals
+    const dailyTotals = {};
+    filteredRecords.forEach(record => {
+      if (!dailyTotals[record.sleep_date]) {
+        dailyTotals[record.sleep_date] = {
+          sleep_date: record.sleep_date,
+          total_minutes: 0,
+          sleep_count: 0
+        };
+      }
+      dailyTotals[record.sleep_date].total_minutes += record.duration_minutes;
+      dailyTotals[record.sleep_date].sleep_count += 1;
+    });
+
+    // Convert to array and sort by date
+    const result = Object.values(dailyTotals).sort((a, b) => 
+      new Date(a.sleep_date) - new Date(b.sleep_date)
+    );
+
+    res.json(result);
   } catch (error) {
     console.error('Get daily totals error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -311,25 +338,35 @@ app.post('/sleep', authenticateToken, async (req, res) => {
       });
     }
 
-    const babyCheck = await pool.query(
-      'SELECT id FROM babies WHERE id = $1 AND user_id = $2',
-      [babyId, req.userId]
-    );
-
-    if (babyCheck.rows.length === 0) {
+    // Verify baby belongs to user
+    const baby = babies.find(b => b.id === parseInt(babyId) && b.user_id === req.userId);
+    if (!baby) {
       return res.status(404).json({ error: 'Baby not found' });
     }
 
-    const result = await pool.query(
-      `INSERT INTO sleep_records (baby_id, sleep_date, start_time, end_time, label, notes) 
-       VALUES ($1, $2, $3, $4, $5, $6) 
-       RETURNING id, sleep_date, start_time, end_time, label, duration_minutes, notes, created_at`,
-      [babyId, sleepDate, startTime, endTime, label, notes || null]
-    );
+    // Calculate duration in minutes
+    const start = new Date(`${sleepDate}T${startTime}`);
+    const end = new Date(`${sleepDate}T${endTime}`);
+    const durationMinutes = Math.round((end - start) / (1000 * 60));
+
+    // Create new sleep record
+    const newSleepRecord = {
+      id: sleepIdCounter++,
+      baby_id: parseInt(babyId),
+      sleep_date: sleepDate,
+      start_time: startTime,
+      end_time: endTime,
+      label,
+      duration_minutes: durationMinutes,
+      notes: notes || null,
+      created_at: new Date().toISOString()
+    };
+
+    sleepRecords.push(newSleepRecord);
 
     res.status(201).json({
       message: 'Sleep record added successfully',
-      sleepRecord: result.rows[0]
+      sleepRecord: newSleepRecord
     });
   } catch (error) {
     console.error('Add sleep record error:', error);
@@ -348,28 +385,36 @@ app.put('/sleep/:id', authenticateToken, async (req, res) => {
       });
     }
 
-    const ownershipCheck = await pool.query(
-      `SELECT sr.id FROM sleep_records sr 
-       JOIN babies b ON sr.baby_id = b.id 
-       WHERE sr.id = $1 AND b.user_id = $2`,
-      [id, req.userId]
-    );
+    // Find sleep record and verify ownership through baby
+    const recordIndex = sleepRecords.findIndex(record => {
+      if (record.id !== parseInt(id)) return false;
+      const baby = babies.find(b => b.id === record.baby_id && b.user_id === req.userId);
+      return baby !== undefined;
+    });
 
-    if (ownershipCheck.rows.length === 0) {
+    if (recordIndex === -1) {
       return res.status(404).json({ error: 'Sleep record not found' });
     }
 
-    const result = await pool.query(
-      `UPDATE sleep_records 
-       SET sleep_date = $1, start_time = $2, end_time = $3, label = $4, notes = $5 
-       WHERE id = $6 
-       RETURNING id, sleep_date, start_time, end_time, label, duration_minutes, notes, created_at`,
-      [sleepDate, startTime, endTime, label, notes || null, id]
-    );
+    // Calculate new duration
+    const start = new Date(`${sleepDate}T${startTime}`);
+    const end = new Date(`${sleepDate}T${endTime}`);
+    const durationMinutes = Math.round((end - start) / (1000 * 60));
+
+    // Update sleep record
+    sleepRecords[recordIndex] = {
+      ...sleepRecords[recordIndex],
+      sleep_date: sleepDate,
+      start_time: startTime,
+      end_time: endTime,
+      label,
+      duration_minutes: durationMinutes,
+      notes: notes || null
+    };
 
     res.json({
       message: 'Sleep record updated successfully',
-      sleepRecord: result.rows[0]
+      sleepRecord: sleepRecords[recordIndex]
     });
   } catch (error) {
     console.error('Update sleep record error:', error);
@@ -381,18 +426,20 @@ app.delete('/sleep/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
 
-    const ownershipCheck = await pool.query(
-      `SELECT sr.id FROM sleep_records sr 
-       JOIN babies b ON sr.baby_id = b.id 
-       WHERE sr.id = $1 AND b.user_id = $2`,
-      [id, req.userId]
-    );
+    // Find sleep record and verify ownership through baby
+    const recordIndex = sleepRecords.findIndex(record => {
+      if (record.id !== parseInt(id)) return false;
+      const baby = babies.find(b => b.id === record.baby_id && b.user_id === req.userId);
+      return baby !== undefined;
+    });
 
-    if (ownershipCheck.rows.length === 0) {
+    if (recordIndex === -1) {
       return res.status(404).json({ error: 'Sleep record not found' });
     }
 
-    await pool.query('DELETE FROM sleep_records WHERE id = $1', [id]);
+    // Delete sleep record
+    sleepRecords.splice(recordIndex, 1);
+
     res.json({ message: 'Sleep record deleted successfully' });
   } catch (error) {
     console.error('Delete sleep record error:', error);
