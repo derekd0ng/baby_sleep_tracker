@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { Baby } from '../../types';
 import api from '../../services/api';
@@ -15,11 +15,7 @@ const Dashboard: React.FC = () => {
   
   const { user, logout } = useAuth();
 
-  useEffect(() => {
-    fetchBabies();
-  }, []);
-
-  const fetchBabies = async () => {
+  const fetchBabies = useCallback(async () => {
     try {
       const response = await api.get('/babies');
       setBabies(response.data);
@@ -31,7 +27,11 @@ const Dashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedBaby]);
+
+  useEffect(() => {
+    fetchBabies();
+  }, [fetchBabies]);
 
   const handleBabyAdded = (newBaby: Baby) => {
     setBabies([...babies, newBaby]);

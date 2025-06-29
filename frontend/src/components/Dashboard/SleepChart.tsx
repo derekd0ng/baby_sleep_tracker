@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -38,11 +38,7 @@ const SleepChart: React.FC<SleepChartProps> = ({ baby }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchDailyTotals();
-  }, [baby.id, startDate, endDate]);
-
-  const fetchDailyTotals = async () => {
+  const fetchDailyTotals = useCallback(async () => {
     setLoading(true);
     try {
       const response = await api.get(`/sleep/baby/${baby.id}/daily-totals`, {
@@ -54,7 +50,11 @@ const SleepChart: React.FC<SleepChartProps> = ({ baby }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [baby.id, startDate, endDate]);
+
+  useEffect(() => {
+    fetchDailyTotals();
+  }, [fetchDailyTotals]);
 
   const formatHours = (minutes: number) => {
     return (minutes / 60).toFixed(1);

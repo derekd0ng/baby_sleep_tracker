@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Baby, SleepRecord } from '../../types';
 import api from '../../services/api';
 
@@ -28,18 +28,18 @@ const SleepTracker: React.FC<SleepTrackerProps> = ({ baby }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    fetchSleepRecords();
-  }, [baby.id]);
-
-  const fetchSleepRecords = async () => {
+  const fetchSleepRecords = useCallback(async () => {
     try {
       const response = await api.get(`/sleep/baby/${baby.id}`);
       setSleepRecords(response.data);
     } catch (err: any) {
       setError(err.response?.data?.error || 'Failed to fetch sleep records');
     }
-  };
+  }, [baby.id]);
+
+  useEffect(() => {
+    fetchSleepRecords();
+  }, [fetchSleepRecords]);
 
   const resetForm = () => {
     setSleepDate(new Date().toISOString().split('T')[0]);
