@@ -29,6 +29,10 @@ const Dashboard: React.FC = () => {
     console.log('fetchBabies called');
     try {
       console.log('Making API call to /babies');
+      // Test with the test endpoint first
+      const testResponse = await api.get('/test-babies');
+      console.log('Test API response:', testResponse.data);
+      
       const response = await api.get('/babies');
       console.log('API response:', response.data);
       setBabies(response.data);

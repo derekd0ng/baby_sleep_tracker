@@ -3,6 +3,10 @@
   "outputDirectory": "frontend/build",
   "rewrites": [
     {
+      "source": "/api/test-babies",
+      "destination": "/api/test-babies.js"
+    },
+    {
       "source": "/api/auth/(.*)",
       "destination": "/api/auth.js"
     },
