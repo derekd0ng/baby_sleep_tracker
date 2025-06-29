@@ -57,28 +57,46 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Debug endpoint for testing
+app.post('/debug/test', (req, res) => {
+  console.log('Debug test received:', req.body);
+  res.json({
+    message: 'Debug endpoint working',
+    receivedBody: req.body,
+    headers: req.headers
+  });
+});
+
 // Auth routes
 app.post('/auth/register', async (req, res) => {
   try {
+    console.log('Registration attempt:', req.body);
     const { username, password, motherName } = req.body;
 
+    console.log('Parsed data:', { username, password: password ? '[provided]' : '[missing]', motherName });
+
     if (!username || !password || !motherName) {
+      console.log('Missing required fields');
       return res.status(400).json({ error: 'Username, password, and mother name are required' });
     }
 
     if (password.length < 6) {
+      console.log('Password too short');
       return res.status(400).json({ error: 'Password must be at least 6 characters long' });
     }
 
     // Check if username already exists
     const existingUser = users.find(user => user.username === username);
     if (existingUser) {
+      console.log('Username already exists:', username);
       return res.status(400).json({ error: 'Username already exists' });
     }
 
+    console.log('Starting password hash...');
     // Hash password
     const saltRounds = 10;
     const passwordHash = await bcrypt.hash(password, saltRounds);
+    console.log('Password hashed successfully');
 
     // Create new user
     const newUser = {
@@ -90,15 +108,19 @@ app.post('/auth/register', async (req, res) => {
     };
 
     users.push(newUser);
+    console.log('User added to array. Total users:', users.length);
 
     // Generate JWT token
     const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-for-development';
+    console.log('Generating JWT token...');
     const token = jwt.sign(
       { userId: newUser.id, username: newUser.username },
       jwtSecret,
       { expiresIn: '24h' }
     );
+    console.log('JWT token generated successfully');
 
+    console.log('Registration successful for:', username);
     res.status(201).json({
       message: 'User registered successfully',
       token,
@@ -110,7 +132,8 @@ app.post('/auth/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ error: 'Internal server error: ' + error.message });
   }
 });
 
